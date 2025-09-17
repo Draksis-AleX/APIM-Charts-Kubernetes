@@ -1,0 +1,141 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: wso2
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush        1
+        Daemon       Off
+        Log_Level    info
+        Parsers_File /fluent-bit/etc/parsers.conf
+
+    # TAIL dei log generali del Gateway (opzionale; utile per troubleshooting)
+    [INPUT]
+        Name tail
+        Path /var/log/wso2/*.log
+        Mem_Buf_Limit  500MB
+        Multiline.Parser wso2multiline
+
+    [FILTER]
+        Name         parser
+        Match        *
+        Key_Name     log
+        Parser       observability
+        Preserve_Key On
+        Reserve_Data On
+
+    [FILTER]
+        Name         parser
+        Match        *
+        Key_Name     log
+        Parser       wso2
+        Preserve_Key On
+        Reserve_Data On
+
+    # APIM Metrics
+    [INPUT]
+        Name                tail
+        Tag                 apim.metrics
+        Path                /var/log/wso2apim/apim_metrics.log
+        Refresh_Interval    5
+        Buffer_Chunk_Size   32KB
+        Buffer_Max_Size     2MB
+        Mem_Buf_Limit       256MB
+        Read_from_Head      true
+        DB                  /var/log/fluentbit/metrics-tail-status.db
+
+    [FILTER]
+        Name                parser
+        Match               apim.metrics
+        Key_Name            log
+        Parser              apim_metrics_parser
+        Reserve_Data        On
+        Preserve_Key        Off
+
+    [FILTER]
+        Name                parser
+        Match               apim.metrics
+        Key_Name            properties
+        Parser              jsonparser
+        Reserve_Data        On
+        Preserve_Key        Off
+
+    [FILTER]
+        Name                rewrite_tag
+        Match               apim.metrics
+        Rule                $apimMetrics   ^apim:response$   metrics.response   false
+
+    [FILTER]
+        Name                rewrite_tag
+        Match               apim.metrics
+        Rule                $apimMetrics   ^apim:faulty$     metrics.faulty     false
+
+    # Output verso OpenSearch
+    [OUTPUT]
+        Name                opensearch
+        Match               metrics.response
+        Host                opensearch
+        Port                9200
+        Logstash_Format     On
+        Logstash_DateFormat %Y-%m-%d
+        Logstash_Prefix     apim_event_response
+        Replace_Dots        On
+        Suppress_Type_Name  On
+        tls                 Off
+        Trace_Error         On
+
+    [OUTPUT]
+        Name                opensearch
+        Match               metrics.faulty
+        Host                opensearch
+        Port                9200
+        Logstash_Format     On
+        Logstash_DateFormat %Y-%m-%d
+        Logstash_Prefix     apim_event_faulty
+        Replace_Dots        On
+        Suppress_Type_Name  On
+        tls                 Off
+        Trace_Error         On
+
+  parsers.conf: |
+    [PARSER]
+        Name        observability
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Offset +0200
+
+    [PARSER]
+        Name        wso2
+        Format      regex
+        Regex       \[(?<date>\d{4}\-\d{2}\-\d{2} \d{2}:\d{2}:\d{2},\d{3,6})\]\s+(?<log_level>\S+)\s+\{(?<class>[\s\S]*?)\}\s+[-]\s+(?:\{(?<service>[\s\S]*?)\})?\s*(?<message>[\s\S]*)
+        Time_Key    date
+        Time_Format %Y-%m-%d %H:%M:%S,%L
+        Time_Offset +0200
+
+    [MULTILINE_PARSER]
+        Name          wso2multiline
+        Type          regex
+        Flush_Timeout 5000
+        Rule          "start_state"   "/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3,6}\]/"  "cont"
+        Rule          "cont"          "/^(?!\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3,6}\])/"  "cont"
+
+    [PARSER]
+        Name        apim_metrics_parser
+        Format      regex
+        Regex       ^\s*(?:.*?)\s+apimMetrics:\s*(?<apimMetrics>[^,]+?),\s*(?:.*?)\s*:\s*(?<properties>\{.*\})\s*(?:.*)$
+
+    [PARSER]
+        Name        jsonparser
+        Format      json
+        Time_Key    time
+        Time_Keep   On
+
+  labelmap.json: |
+    {
+        "instance": "instance",
+        "log_level": "log_level",
+        "service": "service"
+    }
