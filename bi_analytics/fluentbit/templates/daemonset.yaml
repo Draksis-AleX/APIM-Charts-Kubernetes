@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: fluent-bit
+spec:
+  selector:
+    matchLabels:
+      app: fluent-bit
+  template:
+    metadata:
+      labels:
+        app: fluent-bit
+    spec:
+      serviceAccountName: fluent-bit
+      containers:
+        - name: fluent-bit
+          image: fluent/fluent-bit:2.2.2
+          resources:
+            limits:
+              memory: 200Mi
+              cpu: 200m
+            requests:
+              memory: 100Mi
+              cpu: 100m
+          volumeMounts:
+            - name: ballerina-logs
+              mountPath: /ballerina-logs
+            - name: config
+              mountPath: /fluent-bit/etc/
+      volumes:
+        - name: ballerina-logs
+          persistentVolumeClaim:
+            claimName: {{ .Values.ballerinaLogsPvc }}
+        - name: config
+          configMap:
+            name: fluent-bit-daemon-config

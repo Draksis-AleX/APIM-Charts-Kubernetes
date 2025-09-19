@@ -1,0 +1,5 @@
+apiVersion: v2
+name: fluentbit
+version: 0.1.0
+description: Fluent Bit DaemonSet for Ballerina log collection and forwarding to OpenSearch
+appVersion: "2.2.2"

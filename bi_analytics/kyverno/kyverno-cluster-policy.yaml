@@ -1,0 +1,63 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: inject-fluent-bit-sidecar-zproxy
+spec:
+  background: true
+  rules:
+    - name: add-sidecar-and-volumes
+      match:
+        any:
+          - resources:
+              kinds: ["Deployment"]
+              namespaces: ["wso2"]
+              names: ["zproxy-pos-pms-deployment"]
+      mutate:
+        patchStrategicMerge:
+          spec:
+            template:
+              spec:
+                volumes:
+                  - name: app-logs
+                    emptyDir: {}
+                  - name: fb-config
+                    configMap:
+                      name: fluent-bit-sidecar-config
+                containers:
+                  - name: fluent-bit-sidecar
+                    image: cr.fluentbit.io/fluent/fluent-bit:2.2.2
+                    imagePullPolicy: IfNotPresent
+                    volumeMounts:
+                      - name: app-logs
+                        mountPath: /home/ballerina
+                      - name: fb-config
+                        mountPath: /fluent-bit/etc/
+                    resources:
+                      requests:
+                        cpu: 50m
+                        memory: 64Mi
+                      limits:
+                        cpu: 200m
+                        memory: 256Mi
+
+    - name: mount-app-logs-into-app-containers
+      match:
+        any:
+          - resources:
+              kinds: ["Deployment"]
+              namespaces: ["wso2"]
+              names: ["zproxy-pos-pms-deployment"]
+      mutate:
+        foreach:
+          - list: "request.object.spec.template.spec.containers"
+            preconditions:
+              all:
+                - key: "{{ element.name }}"
+                  operator: NotEquals
+                  value: "fluent-bit-sidecar"
+            patchesJson6902: |-
+              - op: add
+                path: /spec/template/spec/containers/{{elementIndex}}/volumeMounts/-
+                value:
+                  name: app-logs
+                  mountPath: /home/ballerina

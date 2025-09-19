@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-daemon-config
+  namespace: {{ .Values.namespace }}
+data:
+  fluent-bit.conf: |-
+{{ .Files.Get "files/fluent-bit.conf" | indent 4 }}
+  parsers.conf: |-
+{{ .Files.Get "files/parsers.conf" | indent 4 }}
+  scripts.lua: |-
+{{ .Files.Get "files/scripts.lua" | indent 4 }}
